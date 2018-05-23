@@ -1,7 +1,7 @@
 import argparse
 import copy, json, os
-import torch
 
+import torch
 from torch import nn, optim
 from tensorboardX import SummaryWriter
 from time import gmtime, strftime
@@ -23,7 +23,7 @@ def train(args, data):
 
     model.train()
     loss, last_epoch = 0, -1
-    max_dev_f1 = -1
+    max_dev_exact, max_dev_f1 = -1, -1
 
     iterator = data.train_iter
     for i, batch in enumerate(iterator):
@@ -55,43 +55,42 @@ def train(args, data):
 
             if dev_f1 > max_dev_f1:
                 max_dev_f1 = dev_f1
+                max_dev_exact = dev_exact
                 best_model = copy.deepcopy(model)
 
             loss = 0
             model.train()
 
     writer.close()
-    print(f'max dev acc: {max_dev_acc:.3f}')
+    print(f'max dev EM: {max_dev_exact:.3f} / max dev F1: {max_dev_f1:.3f}')
 
     return best_model
 
 
 def test(model, args, data):
+    device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     criterion = nn.CrossEntropyLoss()
     loss = 0
-    model.eval()
     answers = dict()
+    model.eval()
+
     for batch in iter(data.dev_iter):
         p1, p2 = model(batch)
         batch_loss = criterion(p1, batch.s_idx) + criterion(p2, batch.e_idx)
         loss += batch_loss.item()
 
-    """
-        for i in range(len(batch.c_word)):
-            # TODO: optimization needed for finding the best span
-            s_idx, e_idx = 0, 0
-            m = -1
-            l = len(p1[i])
-            for j in range(l):
-                for k in range(j, l):
-                    s = p1[i][j] * p2[i][k]
-                    if s > m:
-                        s_idx = j
-                        e_idx = k
-                        m = s
+        # (batch, c_len, c_len)
+        batch_size, c_len = p1.size()
+        ls = nn.LogSoftmax(dim=1)
+        mask = (torch.ones(c_len, c_len) * float('-inf')).to(device).tril(-1).unsqueeze(0).expand(batch_size, -1, -1)
+        score = (ls(p1).unsqueeze(2) + ls(p2).unsqueeze(1)) + mask
+        score, s_idx = score.max(dim=1)
+        score, e_idx = score.max(dim=1)
+        s_idx = torch.gather(s_idx, 1, e_idx.view(-1, 1)).squeeze()
 
+        for i in range(batch_size):
             id = batch.id[i]
-            answer = batch.c_word[i][s_idx:e_idx+1]
+            answer = batch.c_word[i][s_idx[i]:e_idx[i] + 1]
             answer = ' '.join([data.WORD.vocab.itos[idx] for idx in answer])
             answers[id] = answer
 
@@ -100,23 +99,22 @@ def test(model, args, data):
 
     results = evaluate.main(args)
     return loss, results['exact_match'], results['f1']
-    """
-    return loss, 0, 0
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--char-dim', default=8, type=int)
     parser.add_argument('--char-channel-width', default=5, type=int)
     parser.add_argument('--char-channel-size', default=100, type=int)
-    parser.add_argument('--dev-batch-size', default=50, type=int)
+    parser.add_argument('--dev-batch-size', default=60, type=int)
     parser.add_argument('--dev-file', default='dev-v1.1.json')
     parser.add_argument('--dropout', default=0.2, type=float)
     parser.add_argument('--epoch', default=12, type=int)
     parser.add_argument('--gpu', default=0, type=int)
     parser.add_argument('--hidden-size', default=100, type=int)
     parser.add_argument('--learning-rate', default=0.5, type=float)
-    parser.add_argument('--print-freq', default=1000, type=int)
-    parser.add_argument('--train-batch-size', default=50, type=int)
+    parser.add_argument('--print-freq', default=200, type=int)
+    parser.add_argument('--train-batch-size', default=60, type=int)
     parser.add_argument('--train-file', default='train-v1.1.json')
     parser.add_argument('--word-dim', default=100, type=int)
     args = parser.parse_args()
