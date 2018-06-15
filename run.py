@@ -90,7 +90,7 @@ def test(model, args, data):
 
         for i in range(batch_size):
             id = batch.id[i]
-            answer = batch.c_word[i][s_idx[i]:e_idx[i] + 1]
+            answer = batch.c_word[0][i][s_idx[i]:e_idx[i] + 1]
             answer = ' '.join([data.WORD.vocab.itos[idx] for idx in answer])
             answers[id] = answer
 

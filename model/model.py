@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from utils.nn import LSTM
+
 
 class BiDAF(nn.Module):
     def __init__(self, args, pretrained):
@@ -28,11 +30,10 @@ class BiDAF(nn.Module):
                     nn.Sequential(nn.Linear(args.hidden_size * 2, args.hidden_size * 2), nn.Sigmoid()))
 
         # 3. Contextual Embedding Layer
-        self.context_LSTM = nn.LSTM(input_size=args.hidden_size * 2,
-                                    hidden_size=args.hidden_size,
-                                    num_layers=1,
-                                    bidirectional=True,
-                                    batch_first=True)
+        self.context_LSTM = LSTM(input_size=args.hidden_size * 2,
+                                 hidden_size=args.hidden_size,
+                                 bidirectional=True,
+                                 batch_first=True)
 
         # 4. Attention Flow Layer
         self.att_weight_c = nn.Linear(args.hidden_size * 2, 1)
@@ -40,17 +41,15 @@ class BiDAF(nn.Module):
         self.att_weight_cq = nn.Linear(args.hidden_size * 2, 1)
 
         # 5. Modeling Layer
-        self.modeling_LSTM1 = nn.LSTM(input_size=args.hidden_size * 8,
-                                      hidden_size=args.hidden_size,
-                                      num_layers=1,
-                                      bidirectional=True,
-                                      batch_first=True)
+        self.modeling_LSTM1 = LSTM(input_size=args.hidden_size * 8,
+                                   hidden_size=args.hidden_size,
+                                   bidirectional=True,
+                                   batch_first=True)
 
-        self.modeling_LSTM2 = nn.LSTM(input_size=args.hidden_size * 2,
-                                      hidden_size=args.hidden_size,
-                                      num_layers=1,
-                                      bidirectional=True,
-                                      batch_first=True)
+        self.modeling_LSTM2 = LSTM(input_size=args.hidden_size * 2,
+                                   hidden_size=args.hidden_size,
+                                   bidirectional=True,
+                                   batch_first=True)
 
         # 6. Output Layer
         self.p1_weight_g = nn.Linear(args.hidden_size * 8, 1)
@@ -58,11 +57,10 @@ class BiDAF(nn.Module):
         self.p2_weight_g = nn.Linear(args.hidden_size * 8, 1)
         self.p2_weight_m = nn.Linear(args.hidden_size * 2, 1)
 
-        self.output_LSTM = nn.LSTM(input_size=args.hidden_size * 2,
-                                   hidden_size=args.hidden_size,
-                                   num_layers=1,
-                                   bidirectional=True,
-                                   batch_first=True)
+        self.output_LSTM = LSTM(input_size=args.hidden_size * 2,
+                                hidden_size=args.hidden_size,
+                                bidirectional=True,
+                                batch_first=True)
 
         self.dropout = nn.Dropout(p=args.dropout)
         self.reset_params()
@@ -73,19 +71,6 @@ class BiDAF(nn.Module):
             nn.init.kaiming_normal_(getattr(self, f'highway_linear{i}')[0].weight)
             nn.init.constant_(getattr(self, f'highway_linear{i}')[0].bias, 0)
 
-        # 3. Contextual Embedding Layer
-        nn.init.kaiming_normal_(self.context_LSTM.weight_ih_l0)
-        nn.init.orthogonal_(self.context_LSTM.weight_hh_l0)
-        nn.init.constant_(self.context_LSTM.bias_ih_l0, 0)
-        nn.init.constant_(self.context_LSTM.bias_hh_l0, 0)
-        self.context_LSTM.bias_hh_l0.chunk(4)[1].fill_(1)
-
-        nn.init.kaiming_normal_(self.context_LSTM.weight_ih_l0_reverse)
-        nn.init.orthogonal_(self.context_LSTM.weight_hh_l0_reverse)
-        nn.init.constant_(self.context_LSTM.bias_ih_l0_reverse, 0)
-        nn.init.constant_(self.context_LSTM.bias_hh_l0_reverse, 0)
-        self.context_LSTM.bias_hh_l0_reverse.chunk(4)[1].fill_(1)
-
         # 4. Attention Flow Layer
         nn.init.kaiming_normal_(self.att_weight_c.weight)
         nn.init.kaiming_normal_(self.att_weight_q.weight)
@@ -94,31 +79,6 @@ class BiDAF(nn.Module):
         nn.init.constant_(self.att_weight_c.bias, 0)
         nn.init.constant_(self.att_weight_q.bias, 0)
         nn.init.constant_(self.att_weight_cq.bias, 0)
-
-        # 5. Modeling Layer
-        nn.init.kaiming_normal_(self.modeling_LSTM1.weight_ih_l0)
-        nn.init.orthogonal_(self.modeling_LSTM1.weight_hh_l0)
-        nn.init.constant_(self.modeling_LSTM1.bias_ih_l0, 0)
-        nn.init.constant_(self.modeling_LSTM1.bias_hh_l0, 0)
-        self.modeling_LSTM1.bias_hh_l0.chunk(4)[1].fill_(1)
-
-        nn.init.kaiming_normal_(self.modeling_LSTM1.weight_ih_l0_reverse)
-        nn.init.orthogonal_(self.modeling_LSTM1.weight_hh_l0_reverse)
-        nn.init.constant_(self.modeling_LSTM1.bias_ih_l0_reverse, 0)
-        nn.init.constant_(self.modeling_LSTM1.bias_hh_l0_reverse, 0)
-        self.modeling_LSTM1.bias_hh_l0_reverse.chunk(4)[1].fill_(1)
-
-        nn.init.kaiming_normal_(self.modeling_LSTM2.weight_ih_l0)
-        nn.init.orthogonal_(self.modeling_LSTM2.weight_hh_l0)
-        nn.init.constant_(self.modeling_LSTM2.bias_ih_l0, 0)
-        nn.init.constant_(self.modeling_LSTM2.bias_hh_l0, 0)
-        self.modeling_LSTM2.bias_hh_l0.chunk(4)[1].fill_(1)
-
-        nn.init.kaiming_normal_(self.modeling_LSTM2.weight_ih_l0_reverse)
-        nn.init.orthogonal_(self.modeling_LSTM2.weight_hh_l0_reverse)
-        nn.init.constant_(self.modeling_LSTM2.bias_ih_l0_reverse, 0)
-        nn.init.constant_(self.modeling_LSTM2.bias_hh_l0_reverse, 0)
-        self.modeling_LSTM2.bias_hh_l0_reverse.chunk(4)[1].fill_(1)
 
         # 6. Output Layer
         nn.init.kaiming_normal_(self.p1_weight_g.weight)
@@ -130,18 +90,6 @@ class BiDAF(nn.Module):
         nn.init.constant_(self.p1_weight_m.bias, 0)
         nn.init.constant_(self.p2_weight_g.bias, 0)
         nn.init.constant_(self.p2_weight_m.bias, 0)
-
-        nn.init.kaiming_normal_(self.output_LSTM.weight_ih_l0)
-        nn.init.orthogonal_(self.output_LSTM.weight_hh_l0)
-        nn.init.constant_(self.output_LSTM.bias_ih_l0, 0)
-        nn.init.constant_(self.output_LSTM.bias_hh_l0, 0)
-        self.output_LSTM.bias_hh_l0.chunk(4)[1].fill_(1)
-
-        nn.init.kaiming_normal_(self.output_LSTM.weight_ih_l0_reverse)
-        nn.init.orthogonal_(self.output_LSTM.weight_hh_l0_reverse)
-        nn.init.constant_(self.output_LSTM.bias_ih_l0_reverse, 0)
-        nn.init.constant_(self.output_LSTM.bias_hh_l0_reverse, 0)
-        self.output_LSTM.bias_hh_l0_reverse.chunk(4)[1].fill_(1)
 
     def forward(self, batch):
         # TODO: More memory-efficient architecture
@@ -213,7 +161,7 @@ class BiDAF(nn.Module):
             x = torch.cat([c, c2q_att, c * c2q_att, c * q2c_att], dim=-1)
             return x
 
-        def output_layer(g, m):
+        def output_layer(g, m, l):
             """
             :param g: (batch, c_len, hidden_size * 8)
             :param m: (batch, c_len ,hidden_size * 2)
@@ -222,7 +170,7 @@ class BiDAF(nn.Module):
             # (batch, c_len)
             p1 = (self.p1_weight_g(g) + self.p1_weight_m(m)).squeeze()
             # (batch, c_len, hidden_size * 2)
-            m2 = self.dropout(self.output_LSTM(m)[0])
+            m2 = self.dropout(self.output_LSTM((m, l))[0])
             # (batch, c_len)
             p2 = (self.p2_weight_g(g) + self.p2_weight_m(m2)).squeeze()
 
@@ -232,20 +180,22 @@ class BiDAF(nn.Module):
         c_char = char_emb_layer(batch.c_char)
         q_char = char_emb_layer(batch.q_char)
         # 2. Word Embedding Layer
-        c_word = self.word_emb(batch.c_word)
-        q_word = self.word_emb(batch.q_word)
+        c_word = self.word_emb(batch.c_word[0])
+        q_word = self.word_emb(batch.q_word[0])
+        c_lens = batch.c_word[1]
+        q_lens = batch.q_word[1]
         # Highway network
         c = self.dropout(highway_network(c_char, c_word))
         q = self.dropout(highway_network(q_char, q_word))
         # 3. Contextual Embedding Layer
-        c = self.context_LSTM(c)[0]
-        q = self.context_LSTM(q)[0]
+        c = self.context_LSTM((c, c_lens))[0]
+        q = self.context_LSTM((q, q_lens))[0]
         # 4. Attention Flow Layer
         g = self.dropout(att_flow_layer(c, q))
         # 5. Modeling Layer
-        m = self.modeling_LSTM2(self.dropout(self.modeling_LSTM1(g)[0]))[0]
+        m = self.modeling_LSTM2((self.dropout(self.modeling_LSTM1((g, c_lens))[0]), c_lens))[0]
         # 6. Output Layer
-        p1, p2 = output_layer(g, m)
+        p1, p2 = output_layer(g, m, c_lens)
 
         # (batch, c_len), (batch, c_len)
         return p1, p2
