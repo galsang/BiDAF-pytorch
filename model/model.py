@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.nn import LSTM
+from utils.nn import LSTM, Linear
 
 
 class BiDAF(nn.Module):
@@ -12,8 +12,7 @@ class BiDAF(nn.Module):
 
         # 1. Character Embedding Layer
         self.char_emb = nn.Embedding(args.char_vocab_size, args.char_dim, padding_idx=1)
-        # issue: char embedding initialization?
-        nn.init.uniform_(self.char_emb.weight, -0.01, 0.01)
+        nn.init.uniform_(self.char_emb.weight, -0.001, 0.001)
 
         self.char_conv = nn.Conv2d(1, args.char_channel_size, (args.char_dim, args.char_channel_width))
 
@@ -25,71 +24,50 @@ class BiDAF(nn.Module):
         assert self.args.hidden_size * 2 == (self.args.char_channel_size + self.args.word_dim)
         for i in range(2):
             setattr(self, f'highway_linear{i}',
-                    nn.Sequential(nn.Linear(args.hidden_size * 2, args.hidden_size * 2), nn.ReLU()))
+                    nn.Sequential(Linear(args.hidden_size * 2, args.hidden_size * 2),
+                                  nn.ReLU()))
             setattr(self, f'highway_gate{i}',
-                    nn.Sequential(nn.Linear(args.hidden_size * 2, args.hidden_size * 2), nn.Sigmoid()))
+                    nn.Sequential(Linear(args.hidden_size * 2, args.hidden_size * 2),
+                                  nn.Sigmoid()))
 
         # 3. Contextual Embedding Layer
         self.context_LSTM = LSTM(input_size=args.hidden_size * 2,
                                  hidden_size=args.hidden_size,
                                  bidirectional=True,
-                                 batch_first=True)
+                                 batch_first=True,
+                                 dropout=args.dropout)
 
         # 4. Attention Flow Layer
-        self.att_weight_c = nn.Linear(args.hidden_size * 2, 1)
-        self.att_weight_q = nn.Linear(args.hidden_size * 2, 1)
-        self.att_weight_cq = nn.Linear(args.hidden_size * 2, 1)
+        self.att_weight_c = Linear(args.hidden_size * 2, 1)
+        self.att_weight_q = Linear(args.hidden_size * 2, 1)
+        self.att_weight_cq = Linear(args.hidden_size * 2, 1)
 
         # 5. Modeling Layer
         self.modeling_LSTM1 = LSTM(input_size=args.hidden_size * 8,
                                    hidden_size=args.hidden_size,
                                    bidirectional=True,
-                                   batch_first=True)
+                                   batch_first=True,
+                                   dropout=args.dropout)
 
         self.modeling_LSTM2 = LSTM(input_size=args.hidden_size * 2,
                                    hidden_size=args.hidden_size,
                                    bidirectional=True,
-                                   batch_first=True)
+                                   batch_first=True,
+                                   dropout=args.dropout)
 
         # 6. Output Layer
-        self.p1_weight_g = nn.Linear(args.hidden_size * 8, 1)
-        self.p1_weight_m = nn.Linear(args.hidden_size * 2, 1)
-        self.p2_weight_g = nn.Linear(args.hidden_size * 8, 1)
-        self.p2_weight_m = nn.Linear(args.hidden_size * 2, 1)
+        self.p1_weight_g = Linear(args.hidden_size * 8, 1, dropout=args.dropout)
+        self.p1_weight_m = Linear(args.hidden_size * 2, 1, dropout=args.dropout)
+        self.p2_weight_g = Linear(args.hidden_size * 8, 1, dropout=args.dropout)
+        self.p2_weight_m = Linear(args.hidden_size * 2, 1, dropout=args.dropout)
 
         self.output_LSTM = LSTM(input_size=args.hidden_size * 2,
                                 hidden_size=args.hidden_size,
                                 bidirectional=True,
-                                batch_first=True)
+                                batch_first=True,
+                                dropout=args.dropout)
 
         self.dropout = nn.Dropout(p=args.dropout)
-        self.reset_params()
-
-    def reset_params(self):
-        # Highway network
-        for i in range(2):
-            nn.init.kaiming_normal_(getattr(self, f'highway_linear{i}')[0].weight)
-            nn.init.constant_(getattr(self, f'highway_linear{i}')[0].bias, 0)
-
-        # 4. Attention Flow Layer
-        nn.init.kaiming_normal_(self.att_weight_c.weight)
-        nn.init.kaiming_normal_(self.att_weight_q.weight)
-        nn.init.kaiming_normal_(self.att_weight_cq.weight)
-
-        nn.init.constant_(self.att_weight_c.bias, 0)
-        nn.init.constant_(self.att_weight_q.bias, 0)
-        nn.init.constant_(self.att_weight_cq.bias, 0)
-
-        # 6. Output Layer
-        nn.init.kaiming_normal_(self.p1_weight_g.weight)
-        nn.init.kaiming_normal_(self.p1_weight_m.weight)
-        nn.init.kaiming_normal_(self.p2_weight_g.weight)
-        nn.init.kaiming_normal_(self.p2_weight_m.weight)
-
-        nn.init.constant_(self.p1_weight_g.bias, 0)
-        nn.init.constant_(self.p1_weight_m.bias, 0)
-        nn.init.constant_(self.p2_weight_g.bias, 0)
-        nn.init.constant_(self.p2_weight_m.bias, 0)
 
     def forward(self, batch):
         # TODO: More memory-efficient architecture
@@ -137,13 +115,27 @@ class BiDAF(nn.Module):
             q_len = q.size(1)
 
             # (batch, c_len, q_len, hidden_size * 2)
-            c_tiled = c.unsqueeze(2).expand(-1, -1, q_len, -1)
+            #c_tiled = c.unsqueeze(2).expand(-1, -1, q_len, -1)
             # (batch, c_len, q_len, hidden_size * 2)
-            q_tiled = q.unsqueeze(1).expand(-1, c_len, -1, -1)
+            #q_tiled = q.unsqueeze(1).expand(-1, c_len, -1, -1)
             # (batch, c_len, q_len, hidden_size * 2)
-            cq_tiled = c_tiled * q_tiled
+            #cq_tiled = c_tiled * q_tiled
+            #cq_tiled = c.unsqueeze(2).expand(-1, -1, q_len, -1) * q.unsqueeze(1).expand(-1, c_len, -1, -1)
+
+            cq = []
+            for i in range(q_len):
+                #(batch, 1, hidden_size * 2)
+                qi = q.select(1, i).unsqueeze(1)
+                #(batch, c_len, 1)
+                ci = self.att_weight_cq(c * qi).squeeze()
+                cq.append(ci)
             # (batch, c_len, q_len)
-            s = (self.att_weight_c(c_tiled) + self.att_weight_q(q_tiled) + self.att_weight_cq(cq_tiled)).squeeze()
+            cq = torch.stack(cq, dim=-1)
+
+            # (batch, c_len, q_len)
+            s = self.att_weight_c(c).expand(-1, -1, q_len) + \
+                self.att_weight_q(q).permute(0, 2, 1).expand(-1, c_len, -1) + \
+                cq
 
             # (batch, c_len, q_len)
             a = F.softmax(s, dim=2)
@@ -170,7 +162,7 @@ class BiDAF(nn.Module):
             # (batch, c_len)
             p1 = (self.p1_weight_g(g) + self.p1_weight_m(m)).squeeze()
             # (batch, c_len, hidden_size * 2)
-            m2 = self.dropout(self.output_LSTM((m, l))[0])
+            m2 = self.output_LSTM((m, l))[0]
             # (batch, c_len)
             p2 = (self.p2_weight_g(g) + self.p2_weight_m(m2)).squeeze()
 
@@ -184,16 +176,17 @@ class BiDAF(nn.Module):
         q_word = self.word_emb(batch.q_word[0])
         c_lens = batch.c_word[1]
         q_lens = batch.q_word[1]
+
         # Highway network
-        c = self.dropout(highway_network(c_char, c_word))
-        q = self.dropout(highway_network(q_char, q_word))
+        c = highway_network(c_char, c_word)
+        q = highway_network(q_char, q_word)
         # 3. Contextual Embedding Layer
         c = self.context_LSTM((c, c_lens))[0]
         q = self.context_LSTM((q, q_lens))[0]
         # 4. Attention Flow Layer
-        g = self.dropout(att_flow_layer(c, q))
+        g = att_flow_layer(c, q)
         # 5. Modeling Layer
-        m = self.modeling_LSTM2((self.dropout(self.modeling_LSTM1((g, c_lens))[0]), c_lens))[0]
+        m = self.modeling_LSTM2((self.modeling_LSTM1((g, c_lens))[0], c_lens))[0]
         # 6. Output Layer
         p1, p2 = output_layer(g, m, c_lens)
 

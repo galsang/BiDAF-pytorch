@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 
+
 class LSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, batch_first=False, num_layers=1, bidirectional=False):
+    def __init__(self, input_size, hidden_size, batch_first=False, num_layers=1, bidirectional=False, dropout=0.2):
         super(LSTM, self).__init__()
 
         self.rnn = nn.LSTM(input_size=input_size,
@@ -10,8 +11,8 @@ class LSTM(nn.Module):
                            num_layers=num_layers,
                            bidirectional=bidirectional,
                            batch_first=batch_first)
-
         self.reset_params()
+        self.dropout = nn.Dropout(p=dropout)
 
     def reset_params(self):
         for i in range(self.rnn.num_layers):
@@ -30,6 +31,7 @@ class LSTM(nn.Module):
 
     def forward(self, x):
         x, x_len = x
+        x = self.dropout(x)
 
         x_len_sorted, x_idx = torch.sort(x_len, descending=True)
         x_sorted = x.index_select(dim=0, index=x_idx)
@@ -44,3 +46,23 @@ class LSTM(nn.Module):
         h = h.index_select(dim=0, index=x_ori_idx)
 
         return x, h
+
+
+class Linear(nn.Module):
+    def __init__(self, in_features, out_features, dropout=0.0):
+        super(Linear, self).__init__()
+
+        self.linear = nn.Linear(in_features=in_features, out_features=out_features)
+        if dropout > 0:
+            self.dropout = nn.Dropout(p=dropout)
+        self.reset_params()
+
+    def reset_params(self):
+        nn.init.kaiming_normal_(self.linear.weight)
+        nn.init.constant_(self.linear.bias, 0)
+
+    def forward(self, x):
+        if hasattr(self, 'dropout'):
+            x = self.dropout(x)
+        x = self.linear(x)
+        return x
