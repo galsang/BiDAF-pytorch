@@ -27,7 +27,7 @@ Please install the following library requirements specified in the **requirement
 
 ## Execution
 
-> python train.py --help
+> python run.py --help
 
 	usage: run.py [-h] [--char-dim CHAR_DIM]
               [--char-channel-width CHAR_CHANNEL_WIDTH]
