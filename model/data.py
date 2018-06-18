@@ -61,6 +61,10 @@ class SQuAD():
             torch.save(self.train.examples, train_examples_path)
             torch.save(self.dev.examples, dev_examples_path)
 
+        #cut too long context in the training set for efficiency.
+        if args.context_threshold > 0:
+            self.train.examples = [e for e in self.train.examples if len(e.c_word) <= args.context_threshold]
+
         print("building vocab...")
         self.CHAR.build_vocab(self.train, self.dev)
         self.WORD.build_vocab(self.train, self.dev, vectors=GloVe(name='6B', dim=args.word_dim))
