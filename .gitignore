@@ -1,0 +1,2 @@
+.data/squad/*.jsonl
+.data/squad/*torch*
