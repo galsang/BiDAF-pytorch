@@ -89,29 +89,30 @@ def test(model, ema, args, data):
             backup_params.register(name, param.data)
             param.data.copy_(ema.get(name))
 
-    for batch in iter(data.dev_iter):
-        p1, p2 = model(batch)
-        batch_loss = criterion(p1, batch.s_idx) + criterion(p2, batch.e_idx)
-        loss += batch_loss.item()
+    with torch.set_grad_enabled(False):
+        for batch in iter(data.dev_iter):
+            p1, p2 = model(batch)
+            batch_loss = criterion(p1, batch.s_idx) + criterion(p2, batch.e_idx)
+            loss += batch_loss.item()
 
-        # (batch, c_len, c_len)
-        batch_size, c_len = p1.size()
-        ls = nn.LogSoftmax(dim=1)
-        mask = (torch.ones(c_len, c_len) * float('-inf')).to(device).tril(-1).unsqueeze(0).expand(batch_size, -1, -1)
-        score = (ls(p1).unsqueeze(2) + ls(p2).unsqueeze(1)) + mask
-        score, s_idx = score.max(dim=1)
-        score, e_idx = score.max(dim=1)
-        s_idx = torch.gather(s_idx, 1, e_idx.view(-1, 1)).squeeze()
+            # (batch, c_len, c_len)
+            batch_size, c_len = p1.size()
+            ls = nn.LogSoftmax(dim=1)
+            mask = (torch.ones(c_len, c_len) * float('-inf')).to(device).tril(-1).unsqueeze(0).expand(batch_size, -1, -1)
+            score = (ls(p1).unsqueeze(2) + ls(p2).unsqueeze(1)) + mask
+            score, s_idx = score.max(dim=1)
+            score, e_idx = score.max(dim=1)
+            s_idx = torch.gather(s_idx, 1, e_idx.view(-1, 1)).squeeze()
 
-        for i in range(batch_size):
-            id = batch.id[i]
-            answer = batch.c_word[0][i][s_idx[i]:e_idx[i] + 1]
-            answer = ' '.join([data.WORD.vocab.itos[idx] for idx in answer])
-            answers[id] = answer
+            for i in range(batch_size):
+                id = batch.id[i]
+                answer = batch.c_word[0][i][s_idx[i]:e_idx[i] + 1]
+                answer = ' '.join([data.WORD.vocab.itos[idx] for idx in answer])
+                answers[id] = answer
 
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            param.data.copy_(backup_params.get(name))
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                param.data.copy_(backup_params.get(name))
 
     with open(args.prediction_file, 'w', encoding='utf-8') as f:
         print(json.dumps(answers), file=f)
