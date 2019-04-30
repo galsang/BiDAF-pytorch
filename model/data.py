@@ -25,7 +25,9 @@ class SQuAD():
         if not os.path.exists(f'{path}/{args.dev_file}l'):
             self.preprocess_file(f'{path}/{args.dev_file}')
 
-        self.RAW = data.RawField(is_target = False)
+        self.RAW = data.RawField()
+        # explicit declaration for torchtext compatibility
+        self.RAW.is_target = False
         self.CHAR_NESTING = data.Field(batch_first=True, tokenize=list, lower=True)
         self.CHAR = data.NestedField(self.CHAR_NESTING, tokenize=word_tokenize)
         self.WORD = data.Field(batch_first=True, tokenize=word_tokenize, lower=True, include_lengths=True)
