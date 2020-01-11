@@ -12,9 +12,12 @@ class BiDAF(nn.Module):
 
         # 1. Character Embedding Layer
         self.char_emb = nn.Embedding(args.char_vocab_size, args.char_dim, padding_idx=1)
-        nn.init.uniform_(self.char_emb.weight, -0.001, 0.001)
+        # nn.init.uniform_(self.char_emb.weight, -0.001, 0.001)
 
-        self.char_conv = nn.Conv2d(1, args.char_channel_size, (args.char_dim, args.char_channel_width))
+        self.char_conv = nn.Sequential(
+            nn.Conv2d(1, args.char_channel_size, (args.char_dim, args.char_channel_width)),
+            nn.ReLU()
+            )
 
         # 2. Word Embedding Layer
         # initialize word embedding with GloVe
@@ -23,10 +26,10 @@ class BiDAF(nn.Module):
         # highway network
         assert self.args.hidden_size * 2 == (self.args.char_channel_size + self.args.word_dim)
         for i in range(2):
-            setattr(self, f'highway_linear{i}',
+            setattr(self, 'highway_linear{}'.format(i),
                     nn.Sequential(Linear(args.hidden_size * 2, args.hidden_size * 2),
                                   nn.ReLU()))
-            setattr(self, f'highway_gate{i}',
+            setattr(self, 'highway_gate{}'.format(i),
                     nn.Sequential(Linear(args.hidden_size * 2, args.hidden_size * 2),
                                   nn.Sigmoid()))
 
@@ -79,10 +82,8 @@ class BiDAF(nn.Module):
             batch_size = x.size(0)
             # (batch, seq_len, word_len, char_dim)
             x = self.dropout(self.char_emb(x))
-            # (batch， seq_len, char_dim, word_len)
-            x = x.transpose(2, 3)
             # (batch * seq_len, 1, char_dim, word_len)
-            x = x.view(-1, self.args.char_dim, x.size(3)).unsqueeze(1)
+            x = x.view(-1, self.args.char_dim, x.size(2)).unsqueeze(1)
             # (batch * seq_len, char_channel_size, 1, conv_len) -> (batch * seq_len, char_channel_size, conv_len)
             x = self.char_conv(x).squeeze()
             # (batch * seq_len, char_channel_size, 1) -> (batch * seq_len, char_channel_size)
@@ -101,8 +102,8 @@ class BiDAF(nn.Module):
             # (batch, seq_len, char_channel_size + word_dim)
             x = torch.cat([x1, x2], dim=-1)
             for i in range(2):
-                h = getattr(self, f'highway_linear{i}')(x)
-                g = getattr(self, f'highway_gate{i}')(x)
+                h = getattr(self, 'highway_linear{}'.format(i))(x)
+                g = getattr(self, 'highway_gate{}'.format(i))(x)
                 x = g * h + (1 - g) * x
             # (batch, seq_len, hidden_size * 2)
             return x

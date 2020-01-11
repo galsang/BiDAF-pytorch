@@ -16,18 +16,18 @@ class LSTM(nn.Module):
 
     def reset_params(self):
         for i in range(self.rnn.num_layers):
-            nn.init.orthogonal_(getattr(self.rnn, f'weight_hh_l{i}'))
-            nn.init.kaiming_normal_(getattr(self.rnn, f'weight_ih_l{i}'))
-            nn.init.constant_(getattr(self.rnn, f'bias_hh_l{i}'), val=0)
-            nn.init.constant_(getattr(self.rnn, f'bias_ih_l{i}'), val=0)
-            getattr(self.rnn, f'bias_hh_l{i}').chunk(4)[1].fill_(1)
+            nn.init.orthogonal_(getattr(self.rnn, 'weight_hh_l{}'.format(i)))
+            nn.init.kaiming_normal_(getattr(self.rnn, 'weight_ih_l{}'.format(i)))
+            nn.init.constant_(getattr(self.rnn, 'bias_hh_l{}'.format(i)), val=0)
+            nn.init.constant_(getattr(self.rnn, 'bias_ih_l{}'.format(i)), val=0)
+            getattr(self.rnn, 'bias_hh_l{}'.format(i)).chunk(4)[1].fill_(1)
 
             if self.rnn.bidirectional:
-                nn.init.orthogonal_(getattr(self.rnn, f'weight_hh_l{i}_reverse'))
-                nn.init.kaiming_normal_(getattr(self.rnn, f'weight_ih_l{i}_reverse'))
-                nn.init.constant_(getattr(self.rnn, f'bias_hh_l{i}_reverse'), val=0)
-                nn.init.constant_(getattr(self.rnn, f'bias_ih_l{i}_reverse'), val=0)
-                getattr(self.rnn, f'bias_hh_l{i}_reverse').chunk(4)[1].fill_(1)
+                nn.init.orthogonal_(getattr(self.rnn, 'weight_hh_l{}_reverse'.format(i)))
+                nn.init.kaiming_normal_(getattr(self.rnn, 'weight_ih_l{}_reverse'.format(i)))
+                nn.init.constant_(getattr(self.rnn, 'bias_hh_l{}_reverse'.format(i)), val=0)
+                nn.init.constant_(getattr(self.rnn, 'bias_ih_l{}_reverse'.format(i)), val=0)
+                getattr(self.rnn, 'bias_hh_l{}_reverse'.format(i)).chunk(4)[1].fill_(1)
 
     def forward(self, x):
         x, x_len = x
