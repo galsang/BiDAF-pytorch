@@ -102,7 +102,7 @@ def test(model, ema, args, data):
             score = (ls(p1).unsqueeze(2) + ls(p2).unsqueeze(1)) + mask
             score, s_idx = score.max(dim=1)
             score, e_idx = score.max(dim=1)
-            s_idx = torch.gather(s_idx, 1, e_idx.view(-1, 1)).squeeze()
+            s_idx = torch.gather(s_idx, 1, e_idx.view(-1, 1)).squeeze(1)
 
             for i in range(batch_size):
                 id = batch.id[i]
